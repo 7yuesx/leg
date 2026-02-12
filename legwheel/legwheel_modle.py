@@ -38,7 +38,7 @@ class User_Body:
         self.mass = read_mass(self.body_name)
         self.inertia = read_inertia(self.body_name)
 
-class User_
+
 
 M = User_Body("gimbal", 0, [0,0,0])
 ob1 = User_Body("object1", 0, [0,0,0])
