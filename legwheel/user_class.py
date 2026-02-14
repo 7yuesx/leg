@@ -1,15 +1,19 @@
 import mujoco as mj
 import math
-from math import cos, sin, tan , atan2, sqrt, asin, acos
+from math import cos, sin, atan, atan2, sqrt, pi
 
 Model = mj.MjModel.from_xml_path("legwheel.xml")
 Data = mj.MjData(Model)
 
+
+
 class model:
-    def __init__(self, body=None, position=[None,None,None], angle=None, joint=None, longth=0):
+    def __init__(self, body=None, position=[None,None,None], position_target=[None,None,None], angle=None, angle_target=None, joint=None, longth=0):
         self.body_id = body
         self.position = position
+        self.position_target = position_target
         self.angle = angle
+        self.angle_target = angle_target
         self.joint_id = joint
         self.longth = longth
 
@@ -93,7 +97,7 @@ class robot:
         self.leg_r.wheel.position = joint2__2
 
 
-    def positive_solution(self):
+    def forward(self):
 
         self.leg_r.smallleg1.position[0] = self.leg_r.bigleg1.position[0] + self.leg_r.bigleg1.longth * cos(self.leg_r.bigleg1.angle)
         self.leg_r.smallleg1.position[2] = self.leg_r.bigleg1.position[2] + self.leg_r.bigleg1.longth * sin(self.leg_r.bigleg1.angle)
@@ -110,11 +114,12 @@ class robot:
 
         z1 = 0.5 * (-b + sqrt(b**2-4*a*c))/a
         z2 = 0.5 * (-b - sqrt(b**2-4*a*c))/a
-        angle1 = asin(2*z1/(1+z1**2))
-        angle2 = asin(2*z2/(1+z2**2))
-        if angle1 > -3.1415926 and angle1 < -3.1415926/2:
-            self.leg_r.smallleg1.angle = angle1
-        else:   self.leg_r.smallleg1.angle = angle2
+
+        if 2 * atan(z1) < -pi/2 :
+                self.leg_r.smallleg1.angle = 2 * atan(z1);
+        else:
+                self.leg_r.smallleg1.angle = 2 * atan(z2);
+
 
         self.leg_r.wheel.position[0] = self.leg_r.smallleg1.position[0] + self.leg_r.smallleg1.longth * cos(self.leg_r.smallleg1.angle)
         self.leg_r.wheel.position[2] = self.leg_r.smallleg1.position[2] + self.leg_r.smallleg1.longth * sin(self.leg_r.smallleg1.angle)
@@ -130,17 +135,17 @@ class robot:
         p = self.leg_l.smallleg1.position[2]-self.leg_l.smallleg2.position[2]
         q = self.leg_l.smallleg1.position[0]-self.leg_l.smallleg2.position[0]
         a = self.leg_l.smallleg2.longth**2-self.leg_l.smallleg1.longth**2-p**2+q**2+2*q*self.leg_l.smallleg1.longth
-        b = -4*p*self.leg_l.smallleg2.longth
+        b = 4*p*self.leg_l.smallleg2.longth
         c = self.leg_l.smallleg2.longth**2-self.leg_l.smallleg1.longth**2-p**2-q**2-2*q*self.leg_l.smallleg1.longth
 
 
         z1 = 0.5 * (-b + sqrt(b**2-4*a*c))/a
         z2 = 0.5 * (-b - sqrt(b**2-4*a*c))/a
-        angle1 = asin(2*z1/(1+z1**2))
-        angle2 = asin(2*z2/(1+z2**2))
-        if angle1 < 3.1415926 and angle1 > 3.1415926/2:
-            self.leg_l.smallleg1.angle = angle1
-        else:   self.leg_l.smallleg1.angle = angle2
+        if 2 * atan(z1) > pi/2 :
+                self.leg_l.smallleg1.angle = 2 * atan(z1);
+        else:
+                self.leg_l.smallleg1.angle = 2 * atan(z2);
+
 
         self.leg_l.wheel.position[0] = self.leg_l.smallleg1.position[0] + self.leg_l.smallleg1.longth * cos(self.leg_l.smallleg1.angle)
         self.leg_l.wheel.position[2] = self.leg_l.smallleg1.position[2] - self.leg_l.smallleg1.longth * sin(self.leg_l.smallleg1.angle)
@@ -148,6 +153,59 @@ class robot:
         self.leg_l.calculate()
 
 
-    def negative_solution(self):
-        pass
+    def backward(self):
+        p = self.leg_r.wheel.position_target[2]-self.leg_r.bigleg1.position[2]
+        q = self.leg_r.wheel.position_target[0]-self.leg_r.bigleg1.position[0]
+
+        a = q**2+p**2+self.leg_r.bigleg1.longth**2-self.leg_r.smallleg1.longth**2+2*self.leg_r.bigleg1.longth*self.leg_r.wheel.position_target[0]
+        b = -4*self.leg_r.bigleg1.longth*self.leg_r.wheel.position_target[2]
+        c = q**2+p**2+self.leg_r.bigleg1.longth**2-self.leg_r.smallleg1.longth**2-2*self.leg_r.bigleg1.longth*self.leg_r.wheel.position_target[0]
+        z1 = 0.5 * (-b + sqrt(b**2-4*a*c))/a
+        z2 = 0.5 * (-b - sqrt(b**2-4*a*c))/a
+
+        if 2 * atan(z1) > -pi/3 and 2 * atan(z1) < pi/2:
+                self.leg_r.bigleg1.angle_target = 2 * atan(z1);
+        else:
+                self.leg_r.bigleg1.angle_target = 2 * atan(z2);
+        
+        p = self.leg_r.wheel.position_target[2]-self.leg_r.bigleg2.position[2]
+        q = self.leg_r.wheel.position_target[0]-self.leg_r.bigleg2.position[0]
+
+        a = q**2+p**2+self.leg_r.bigleg2.longth**2-self.leg_r.smallleg1.longth**2+2*self.leg_r.bigleg2.longth*self.leg_r.wheel.position_target[0]
+        b = -4*self.leg_r.bigleg2.longth*self.leg_r.wheel.position_target[2]
+        c = q**2+p**2+self.leg_r.bigleg2.longth**2-self.leg_r.smallleg1.longth**2-2*self.leg_r.bigleg2.longth*self.leg_r.wheel.position_target[0]
+        z1 = 0.5 * (-b + sqrt(b**2-4*a*c))/a
+        z2 = 0.5 * (-b - sqrt(b**2-4*a*c))/a
+
+        if 2 * atan(z1) > -5*pi/6 and 2 * atan(z1) < -pi/2:
+                self.leg_r.bigleg2.angle_target = 2 * atan(z1);
+        else:
+                self.leg_r.bigleg2.angle_target = 2 * atan(z2);
 ######################################################################################################################################################
+        p = self.leg_l.wheel.position_target[2]-self.leg_l.bigleg1.position[2]
+        q = self.leg_l.wheel.position_target[0]-self.leg_l.bigleg1.position[0]
+
+        a = q**2+p**2+self.leg_l.bigleg1.longth**2-self.leg_l.smallleg1.longth**2+2*self.leg_l.bigleg1.longth*self.leg_l.wheel.position_target[0]
+        b = 4*self.leg_l.bigleg1.longth*self.leg_l.wheel.position_target[2]
+        c = q**2+p**2+self.leg_l.bigleg1.longth**2-self.leg_l.smallleg1.longth**2-2*self.leg_l.bigleg1.longth*self.leg_l.wheel.position_target[0]
+        z1 = 0.5 * (-b + sqrt(b**2-4*a*c))/a
+        z2 = 0.5 * (-b - sqrt(b**2-4*a*c))/a
+
+        if 2 * atan(z1) > -pi/3 and 2 * atan(z1) < pi/2:
+                self.leg_l.bigleg1.angle_target = 2 * atan(z1);
+        else:
+                self.leg_l.bigleg1.angle_target = 2 * atan(z2);
+        
+        p = self.leg_l.wheel.position_target[2]-self.leg_l.bigleg2.position[2]
+        q = self.leg_l.wheel.position_target[0]-self.leg_l.bigleg2.position[0]
+
+        a = q**2+p**2+self.leg_l.bigleg2.longth**2-self.leg_l.smallleg1.longth**2+2*self.leg_l.bigleg2.longth*self.leg_l.wheel.position_target[0]
+        b = 4*self.leg_l.bigleg2.longth*self.leg_l.wheel.position_target[2]
+        c = q**2+p**2+self.leg_l.bigleg2.longth**2-self.leg_l.smallleg1.longth**2-2*self.leg_l.bigleg2.longth*self.leg_l.wheel.position_target[0]
+        z1 = 0.5 * (-b + sqrt(b**2-4*a*c))/a
+        z2 = 0.5 * (-b - sqrt(b**2-4*a*c))/a
+
+        if 2 * atan(z1) > -5*pi/6 and 2 * atan(z1) < -pi/2:
+                self.leg_l.bigleg2.angle_target = 2 * atan(z1);
+        else:
+                self.leg_l.bigleg2.angle_target = 2 * atan(z2);

@@ -1,4 +1,4 @@
-from user_class import mj, Model, robot
+from user_class import mj, Model, Data, robot
 robot = robot()
 
 
@@ -38,4 +38,5 @@ robot.write(joint1_id, joint2_id, joint3_id, joint4_id,
 
 while True:
     robot.read()
-    robot.positive_solution()
+    robot.forward()
+    robot.backward()
