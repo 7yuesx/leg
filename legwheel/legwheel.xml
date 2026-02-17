@@ -3,11 +3,12 @@
         <!-- 光源 -->
         <light diffuse=".5 .5 .5" pos="0 0 3" dir="0 0 -1"/>
         <geom type="plane" size="5 5 0.1" rgba=".9 .9 .9 1" friction="0.9 0.001 0.0001"/>
-        <body name="bigbox" pos="0 0 0.1">
-            <geom type="box"  size="0.1275 0.1275 0.1275" rgba="1 1 1 1" friction="0.9 0.001 0.0001 " density="1000000"/>
-        </body>
+        <!-- <body name="bigbox" pos="0 0 0.1">
+            <geom type="box"  size="0.1 0.1 0.1275" rgba="1 1 1 1" friction="0.9 0.001 0.0001 " density="1000000"/>
+        </body> -->
         <body name="gimbal" pos="0 0 0.255">
-            <!-- <joint type="free"/> -->
+            <joint type="free"/>
+            <site name="imu_site" pos="0 0 0"/> 
             <geom type="box" size="0.15 0.15 0.025" rgba="0.8 0.8 0.8 1" density="4500"/>
             <geom type="cylinder" fromto="0.05 0.15 0 0.05 0.16 0" size="0.020 " rgba="0.6 0.6 0.6 1" />
                 
@@ -19,21 +20,21 @@
                         <geom type="box" size="0.0075 0.005 0.125" rgba="0.2 0.2 0.2 1" density="4500"/>
                         <body name="wheel1" pos="0 0.005 -0.1175">
                             <joint name="joint1__2" pos="0 0 0" type="hinge" axis="0 1 0" limited="false"/>
-                            <geom type="cylinder" fromto="0 0 0 0 0.009 0" size="0.020 " rgba="1 1 1 1" friction="1.1 0.1 0.1 " density="4500"/>
+                            <geom type="cylinder" fromto="0 0 0 0 0.005 0" size="0.020 " rgba="1 1 1 1" friction="1.1 0.1 0.1 " density="4500"/>
                         </body>
                     </body>
                 </body>
             
-                <geom type="cylinder" fromto="0.05 -0.16 0 0.05 -0.15 0" size="0.020 " rgba="0.6 0.6 0.6 1"/>
+                <geom type="cylinder" fromto="0.05 -0.15 0 0.05 -0.16 0" size="0.020 " rgba="0.6 0.6 0.6 1"/>
                 <body name="bigleg2" pos="0.1175 -0.165 0">
-                    <joint name="joint2" pos="-0.0675 0 0" type="hinge" axis="0 -1 0"range="-90 60"/>
+                    <joint name="joint2" pos="-0.0675 0 0" type="hinge" axis="0 -1 0" range="-90 60"/>
                     <geom type="box" size="0.075 0.005 0.0075" rgba="0.4 0.4 0.4 1" density="4500"/>
                     <body name="smallleg2" pos="0.0675 0.01 -0.1175">
-                        <joint name="joint2_1" pos="0 0 0.1175" type="hinge" axis="0 1 0" ref="-90"/>
+                        <joint name="joint2_1" pos="0 0 0.1175" type="hinge" axis="0 -1 0" ref="-90"/>
                         <geom type="box" size="0.0075 0.005 0.125" rgba="0.2 0.2 0.2 1" density="4500"/>
-                        <body name="wheel2" pos="0 -0.014 -0.1175">
-                            <joint name="joint2__2" pos="0 0 0" type="hinge" axis="0 1 0" limited="false"/>
-                            <geom type="cylinder" fromto="0 0 0 0 0.009 0" size="0.020 " rgba="1 1 1 1" friction="1.1 0.1 0.1 " density="4500"/>
+                        <body name="wheel2" pos="0 -0.005 -0.1175">
+                            <joint name="joint2__2" pos="0 0 0" type="hinge" axis="0 -1 0" limited="false"/>
+                            <geom type="cylinder" fromto="0 0 0 0 -0.005 0" size="0.020 " rgba="1 1 1 1" friction="1.1 0.1 0.1 " density="4500"/>
                         </body>
                     </body>
                 </body>
@@ -46,24 +47,24 @@
                     <body name="smallleg3" pos="-0.0675 0.01 -0.1175">
                         <joint name="joint3_1" pos="0 0 0.1175" type="hinge" axis="0 1 0" ref="90"/>
                         <geom type="box" size="0.0075 0.005 0.125" rgba="0.2 0.2 0.2 1" density="4500"/>
-                        <body name="wheel3" pos="0 -0.006 -0.1175">
+                        <body name="wheel3" pos="0 -0.005 -0.1175">
                             <joint name="joint3__2" pos="0 0 0" type="hinge" axis="0 1 0" limited="false"/>
-                            <geom type="cylinder" fromto="0 0 0 0 0.001 0" size="0.001 " rgba="1 1 1 1" friction="1.1 0.1 0.1 " density="1"/>
+                            <geom type="cylinder" fromto="0 0 0 0 -0.005 0" size="0.020 " rgba="1 1 1 1" friction="1.1 0.1 0.1 " density="4500"/>
                         </body>
                     </body>
                 </body>
             
             
-                <geom type="cylinder" fromto="-0.05 -0.16 0 -0.05 -0.15 0" size="0.020 " rgba="0.6 0.6 0.6 1"/>
+                <geom type="cylinder" fromto="-0.05 -0.15 0 -0.05 -0.16 0" size="0.020 " rgba="0.6 0.6 0.6 1"/>
                 <body name="bigleg4" pos="-0.1175 -0.165 0">
-                    <joint name="joint4" pos="0.0675 0 0" type="hinge" axis="0 -1 0" ref="-180" range="-90 -240"/>
+                    <joint name="joint4" pos="0.0675 0 0" type="hinge" axis="0 -1 0" ref="-180" range="-240 -90"/>
                     <geom type="box" size="0.075 0.005 0.0075" rgba="0.4 0.4 0.4 1" density="4500"/>
                     <body name="smallleg4" pos="-0.0675 -0.01 -0.1175">
-                        <joint name="joint4_1" pos="0 0 0.1175" type="hinge" axis="0 1 0" ref="-90"/>
+                        <joint name="joint4_1" pos="0 0 0.1175" type="hinge" axis="0 -1 0" ref="-90"/>
                         <geom type="box" size="0.0075 0.005 0.125" rgba="0.2 0.2 0.2 1" density="4500"/>
                         <body name="wheel4" pos="0 0.005 -0.1175">
-                            <joint name="joint4__2" pos="0 0 0" type="hinge" axis="0 1 0" limited="false"/>
-                            <geom type="cylinder" fromto="0 0 0 0 0.001 0" size="0.001 " rgba="1 1 1 1" friction="1.1 0.1 0.1 " density="1"/>
+                            <joint name="joint4__2" pos="0 0 0" type="hinge" axis="0 -1 0" limited="false"/>
+                            <geom type="cylinder" fromto="0 0 0 0 0.005 0" size="0.020 " rgba="1 1 1 1" friction="1.1 0.1 0.1 " density="4500"/>
                         </body>
                     </body>
                 </body>
@@ -71,8 +72,8 @@
         </body>
     </worldbody>
     <equality>
-        <weld name="connect1" body1="wheel1" body2="wheel3" relpose="0 0.005 0 1 0 0 0"  solref="0.005 1"/>
-        <weld name="connect2" body1="wheel2" body2="wheel4" relpose="0 -0.005 0 1 0 0 0"  solref="0.005 1"/>
+        <weld name="connect1" body1="wheel1" body2="wheel3" relpose="0 0 0 1 0 0 0"  solref="0.005 1"/>
+        <weld name="connect2" body1="wheel2" body2="wheel4" relpose="0 0 0 1 0 0 0"  solref="0.005 1"/>
     </equality>
     <actuator>
         <motor name="m1" joint="joint1" gear="30"/>
@@ -82,4 +83,30 @@
         <motor name="w1" joint="joint1__2" gear="48"/>
         <motor name="w2" joint="joint2__2" gear="48"/>
     </actuator>
+    <sensor>
+
+        <gyro name="body_gyro" site="imu_site"/>
+        <framequat name="perfect_angle" objtype="site" objname="imu_site"/>
+        <accelerometer name="body_accel" site="imu_site"/>
+        <framepos name="perfect_pos" objtype="site" objname="imu_site"/>
+        <framelinvel objtype="site" objname="imu_site"/>
+        <actuatorfrc name="motor_l1_force" actuator="m1"/>
+        <actuatorfrc name="motor_r1_force" actuator="m2"/>
+        <actuatorfrc name="motor_l2_force" actuator="m3"/>
+        <actuatorfrc name="motor_r2_force" actuator="m4"/>
+        <actuatorfrc name="wheel_l_force" actuator="w1"/>
+        <actuatorfrc name="wheel_r_force" actuator="w2"/>
+        <jointpos name="motor_l1_pos" joint="joint1"/>
+        <jointvel name="motor_l1_vel" joint="joint1"/>
+        <jointpos name="motor_r1_pos" joint="joint2"/>
+        <jointvel name="motor_r1_vel" joint="joint2"/>
+        <jointpos name="motor_l2_pos" joint="joint3"/>
+        <jointvel name="motor_l2_vel" joint="joint3"/>
+        <jointpos name="motor_r2_pos" joint="joint4"/>
+        <jointvel name="motor_r2_vel" joint="joint4"/>
+        <jointpos name="wheel_l_pos" joint="joint1__2"/>
+        <jointvel name="wheel_l_vel" joint="joint1__2"/>
+        <jointpos name="wheel_r_pos" joint="joint2__2"/>
+        <jointvel name="wheel_r_vel" joint="joint2__2"/>
+    </sensor>
 </mujoco>
