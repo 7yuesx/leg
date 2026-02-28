@@ -4,23 +4,40 @@ import numpy as np
 import mujoco as mj
 from mujoco import viewer
 import time
-from math import cos ,sin
+from math import cos ,sin, pi
 import socket
 import struct
 from scipy.spatial.transform import Rotation as R
 
-from user_class import PIDController,LowPassFilter
-
-pid_leg_l_P1=PIDController(kp=0.1,ki=0,kd=0)
-pid_leg_r_P1=PIDController(kp=0.1,ki=0,kd=0)
-pid_leg_l_V1=PIDController(kp=0.01,ki=0,kd=0)
-pid_leg_r_V1=PIDController(kp=0.01,ki=0,kd=0)
-pid_leg_l_P2=PIDController(kp=0.1,ki=0,kd=0)
-pid_leg_r_P2=PIDController(kp=0.1,ki=0,kd=0)
-pid_leg_l_V2=PIDController(kp=0.01,ki=0,kd=0)
-pid_leg_r_V2=PIDController(kp=0.01,ki=0,kd=0)
 
 
+from pynput import keyboard
+
+# 控制状态
+cmd_v = 0.0
+cmd_omega_w = 0.0
+
+
+
+def on_press(key):
+    global cmd_v, cmd_omega_w
+    try:
+        if key == keyboard.Key.up: cmd_v = 0.5
+        if key == keyboard.Key.down: cmd_v = -0.5
+        if key == keyboard.Key.left: cmd_omega_w = 0.5
+        if key == keyboard.Key.right: cmd_omega_w = -0.5
+    except AttributeError:
+        pass
+
+def on_release(key):
+    global cmd_v, cmd_omega_w
+    # 松开按键时归零
+    cmd_v = 0.0
+    cmd_omega_w = 0.0
+
+# 开启后台监听
+listener = keyboard.Listener(on_press=on_press, on_release=on_release)
+listener.start()
 
 
 UDP_IP = "127.0.0.1"
@@ -37,9 +54,12 @@ v=0
 x=0
 Omega=0
 roll=0
+yaw_c=0
+number=0
 g_z=0
 
-
+xt=0
+Ot=0
     
 
 with mj.viewer.launch_passive(Model, Data) as viewer:
@@ -72,8 +92,6 @@ with mj.viewer.launch_passive(Model, Data) as viewer:
             # x+=v*dt
             #Omega+=robot.gimbal.gyro[2]*dt
 
-
-
             # ... 仿真循环内 ...
 
             # 1. 读取传感器传回的四元数 [w, x, y, z]
@@ -89,14 +107,13 @@ with mj.viewer.launch_passive(Model, Data) as viewer:
             roll, pitch, yaw = euler*3.1415926/180
 
 
-
             robot.forward()
             robot.leg_l.wheel.position_target=[0,0,-0.2]
             robot.leg_r.wheel.position_target=[0,0,-0.2]
             robot.backward()
 
-            v=robot.gimbal.vocity[0]*cos(yaw)-robot.gimbal.vocity[1]*sin(yaw)
-            x=robot.gimbal.position[0]*cos(yaw)-robot.gimbal.position[1]*sin(yaw)
+            v=robot.gimbal.vocity[0]*cos(yaw)+robot.gimbal.vocity[1]*sin(yaw)
+            x+=v*dt
             
 
             
@@ -111,34 +128,33 @@ with mj.viewer.launch_passive(Model, Data) as viewer:
             robot.gimbal.gyro[1], 
             robot.leg_l.virtual_leg.vocity, 
             robot.leg_r.virtual_leg.vocity]
-            #print("传感器数据：", elements)
+
+
             # 2. 转换为 numpy 数组并强制 reshape 为 (10, 1)
             # np.hstack 会处理掉那些 (1,) 形状的细微差别
             z = np.array([np.reshape(e, -1)[0] for e in elements]).reshape(10, 1)
-            # print("状态向量 z :", z)
-            #     [robot.gimbal.angle],[robot.leg_l.virtual_leg.angle],[robot.leg_r.virtual_leg.angle],
-            #     [v],[robot.gimbal.gyro[2]],[robot.leg_l.wheel.vocity*robot.leg_l.wheel.longth],[robot.leg_r.wheel.vocity*robot.leg_r.wheel.longth],
-            #     [robot.gimbal.gyro[1]],[robot.leg_l.virtual_leg.vocity],[robot.leg_r.virtual_leg.vocity]])
-            
-            U=-F_convergence @ z
+
+            xt+=cmd_v*dt;
+            Ot+=cmd_omega_w*dt;
+            z_target=np.array([
+            [xt],    # x: 100
+            [Ot],     # w: 10
+            [0],   # theta: 5000 (身体俯仰是最重要的！)
+            [0],    # theta_l: 500
+            [0],    # theta_r: 500
+            [cmd_v],     # x_dot
+            [cmd_omega_w],      # w_dot
+            [0],    # theta_dotxt
+            [0],     # theta_dot_l
+            [0]      # theta_dot_r
+        ])
+            U=-F_convergence @ (z-z_target)
             #z = np.array([np.reshape(e, -1)[0] for e in elements]).reshape(1, 10)
             print(z)
             U=U.flatten()  # 将 (6, 1) 转换为 (6,) 的一维数组
 
          
-            target_l_V1=float(pid_leg_l_P1.update(robot.leg_l.bigleg1.angle_target,robot.leg_l.bigleg1.angle))
-         
-            target_r_V1=float(pid_leg_l_P1.update(robot.leg_r.bigleg1.angle_target,robot.leg_r.bigleg1.angle))
-         
-            output_l1=float(pid_leg_l_V1.update(target_l_V1,robot.leg_l.bigleg1.vocity))
-            output_r1=float(pid_leg_r_V1.update(target_r_V1,robot.leg_r.bigleg1.vocity))
-            target_l_V2=float(pid_leg_l_P2.update(robot.leg_l.bigleg2.angle_target,robot.leg_l.bigleg2.angle))
-       
-            target_r_V2=float(pid_leg_l_P2.update(robot.leg_r.bigleg2.angle_target,robot.leg_r.bigleg2.angle))
-  
-            output_l2=float(pid_leg_l_V2.update(target_l_V2,robot.leg_l.bigleg2.vocity))
-            output_r2=float(pid_leg_r_V2.update(target_r_V2,robot.leg_r.bigleg2.vocity))
-
+            
 
             send_list = [
                 z[0], 
@@ -159,6 +175,10 @@ with mj.viewer.launch_passive(Model, Data) as viewer:
                 U[3],
                 U[4],
                 U[5],
+                xt,
+                Ot,
+                cmd_v,
+                cmd_omega_w,
             ]
         
 
@@ -167,10 +187,7 @@ with mj.viewer.launch_passive(Model, Data) as viewer:
             binary_data = struct.pack('<' + 'f' * len(send_list), *send_list)
             sock.sendto(binary_data + vofa_tail, (UDP_IP, UDP_PORT))
 
-
-            pid=np.array([output_l1,output_r1,output_l2,output_r2,0,0])
-            # Data.ctrl[:] = U+E*p+D*d
-            U=np.clip(U,-20,20)
+            U=np.clip(U,-15,15)
             Data.ctrl[:] = U
             
             # 3. 物理引擎向前推进一步
