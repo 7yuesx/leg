@@ -1,579 +1,247 @@
-import mujoco as mj
 import math
 from math import cos, sin, atan, atan2, sqrt, pi
 
-Model = mj.MjModel.from_xml_path("legwheel.xml")
-Data = mj.MjData(Model)
 
+import numpy as np
 
+class Discreteness(object):
 
+    def __init__(self, dt):
+        self.dt = dt
+        self.last_diff = 0.0
+        self.last_sum = 0.0
+        self.diff_num = 0.0
+        self.sum_num = 0.0
 
-class gimbal:
-    def __init__(self, body=None, position=[0,0,0], position_target=[0,0,0], angle=0, angle_target=0, vocity=0, force=0, gyro=[None,None,None], accel=[None,None,None], longth=0,quat=[None,None,None,None], sensor_gyro_id=None, sensor_quat_id=None,sensor_pos_id=None,sensor_vel_id=None):
-        self.body_id = body
-        self.position = position
-        self.position_target = position_target
-        self.angle = angle
-        self.angle_target = angle_target
-        self.vocity = vocity
-        self.force = force
-        self.gyro = gyro
-        self.accel = accel
-        self.longth = longth
-        self.quat = quat
+    def Sum(self, s_num):
+        self.sum_num = self.last_sum + self.dt * s_num
+        self.last_sum = self.sum_num
+        return self.sum_num
 
-        self.sensor_gyro_id = sensor_gyro_id
-        self.sensor_quat_id = sensor_quat_id
-        self.sensor_pos_id = sensor_pos_id
-        self.sensor_vel_id = sensor_vel_id
+    def Diff(self, d_num):
+        self.diff_num = (d_num - self.last_diff) / self.dt
+        self.last_diff = d_num
+        return self.diff_num
 
-    def read_gyro(self):
-        start_index = Model.sensor_adr[self.sensor_gyro_id]
-        data_dim = Model.sensor_dim[self.sensor_gyro_id]
-        self.gyro = Data.sensordata[start_index : start_index + data_dim]
-    def read_quat(self):
-        start_index = Model.sensor_adr[self.sensor_quat_id]
-        data_dim = Model.sensor_dim[self.sensor_quat_id]
-        self.quat = Data.sensordata[start_index : start_index + data_dim]
+class RobotSensor:
+    def __init__(self, model, data):
+        """
+        model: mujoco.MjModel
+        data: mujoco.MjData
+        """
+        self.model = model
+        self.data = data
+
+    # ---------------------------
+    # IMU
+    # ---------------------------
+    def get_orientation_quat(self):
+        """Return quaternion [w, x, y, z]"""
+        return self.data.sensor("perfect_quat").data.copy()
+
+    def get_acc(self):
+        """Return linear acceleration (m/s^2)"""
+        return self.data.sensor("body_accel").data.copy()
+
+    def get_gyro(self):
+        """Return angular velocity (rad/s)"""
+        return self.data.sensor("body_gyro").data.copy()
+
+    # ---------------------------
+    # Joint positions
+    # ---------------------------
+    def get_joint_positions(self):
+        """Return all joint positions as dict"""
+        return {
+            "motor_l1_pos": self.data.sensor("motor_l1_pos").data[0],
+            "motor_l2_pos": self.data.sensor("motor_l2_pos").data[0],
+            "wheel_l_pos": self.data.sensor("wheel_l_pos").data[0],
+
+            "motor_r1_pos": self.data.sensor("motor_r1_pos").data[0],
+            "motor_r2_pos": self.data.sensor("motor_r2_pos").data[0],
+            "wheel_r_pos": self.data.sensor("wheel_r_pos").data[0],
+
+            "motor_l1_vel": self.data.sensor("motor_l1_vel").data[0],
+            "motor_l2_vel": self.data.sensor("motor_l2_vel").data[0],
+            "wheel_l_vel": self.data.sensor("wheel_l_vel").data[0],
+
+            "motor_r1_vel": self.data.sensor("motor_r1_vel").data[0],
+            "motor_r2_vel": self.data.sensor("motor_r2_vel").data[0],
+            "wheel_r_vel": self.data.sensor("wheel_r_vel").data[0],
+        }
+
+    # ---------------------------
+    # Combined state (recommended)
+    # ---------------------------
+    def get_state(self):
+        """Return full robot state"""
+        return {
+            "quat": self.get_orientation_quat(),
+            "acc": self.get_acc(),
+            "gyro": self.get_gyro(),
+            "joints": self.get_joint_positions(),
+            "euler": self.quat_to_euler(self.get_orientation_quat()),
+        }
+
+    # ---------------------------
+    # Optional: quaternion → euler
+    # ---------------------------
+    def quat_to_euler(self, quat):
+        """Convert quaternion [w,x,y,z] → roll, pitch, yaw"""
+        w, x, y, z = quat
+
+        # roll (x-axis)
+        sinr_cosp = 2 * (w * x + y * z)
+        cosr_cosp = 1 - 2 * (x * x + y * y)
+        roll = np.arctan2(sinr_cosp, cosr_cosp)
+
+        # pitch (y-axis)
+        sinp = 2 * (w * y - z * x)
+        pitch = np.arcsin(np.clip(sinp, -1.0, 1.0))
+
+        # yaw (z-axis)
+        siny_cosp = 2 * (w * z + x * y)
+        cosy_cosp = 1 - 2 * (y * y + z * z)
+        yaw = np.arctan2(siny_cosp, cosy_cosp)
+
+        return np.array([roll, pitch, yaw])
+######################
+
+class Leg:
+    def __init__(self, name, dt):
+        self.name = name
+        self.length = 0.0
+        self.length_dot = Discreteness(dt)
+        self.theta = 0.0
+        self.theta_dot = Discreteness(dt)
+
+        self.phi_front = 0.0
+        self.phi_back = 0.0
+        self.phi_front_dot = Discreteness(dt)
+        self.phi_back_dot = Discreteness(dt)
+
+        self.t_front = 0.0
+        self.t_back = 0.0
+
+        self.f_l = 0.0
+        self.t_l = 0.0
+
+        self.x_vel = 0.0
+        self.y_vel = 0.0
+
+    def forward(self, motor, imu, length, Leg):
+
+        theta_front = motor[self.name + "_front_pos"]
+        theta_back = motor[self.name + "_back_pos"]
+        lenth_base = 0.05
+        length_front_big = length[self.name + "_front_big"]
+        length_front_small = length[self.name + "_front_small"]
+        length_back_big = length[self.name + "_back_big"]
+        length_back_small = length[self.name + "_back_small"]
+
+        x_a = -lenth_base# * cos(imu["euler"][1])
+        y_a = 0#-lenth_base * sin(imu["euler"][1])
+        x_e = lenth_base# * cos(imu["euler"][1])
+        y_e = 0#lenth_base * sin(imu["euler"][1])
+
+        x_b = x_a + length_back_big * cos(theta_back)
+        y_b = y_a + length_back_big * sin(theta_back)
+
+        x_d = x_e + length_front_big * cos(theta_front)
+        y_d = y_e + length_front_big * sin(theta_front)
+
+        l_bd = sqrt((x_b - x_d) ** 2 + (y_b - y_d) ** 2)
+        A = 2*length_back_small*(x_d-x_b)
+        B = 2*length_back_small*(y_d-y_b)
+        C = length_back_small**2 + l_bd**2 - length_front_small**2   
+
+        self.phi_back = 2*atan2(B+sqrt(A**2 + B**2 - C**2), A+C)
+
+        x_c = x_b + length_back_small * cos(self.phi_back)
+        y_c = y_b + length_back_small * sin(self.phi_back)
+
+        self.phi_front = np.arctan2(y_c - y_d, x_c - x_d)
+
+        self.length = sqrt(x_c ** 2 + y_c ** 2)
+        self.theta = -(atan2(x_c, y_c)-imu["euler"][1])
+
+        self.x_vel = x_c
+        self.y_vel = y_c
+
+    def vmc(self, f_l, t_l, motor, length):
+
+        self.f_l=f_l
+        self.t_l=t_l
+        theta_front = motor[self.name + "_front_pos"]
+        theta_back = motor[self.name + "_back_pos"]
+
+        theta_front_vel = motor[self.name + "_front_vel"]
+        theta_back_vel = motor[self.name + "_back_vel"]
+
+        length_front_big = length[self.name + "_front_big"]
+        length_back_big = length[self.name + "_back_big"]
+
+        self.t_back = self.f_l * length_back_big * cos(self.theta - self.phi_front)*sin(theta_back - self.phi_back)/sin(self.phi_front - self.phi_back)+self.t_l * length_back_big * -sin(self.theta - self.phi_front)*sin(theta_back - self.phi_back)/(self.length*sin(self.phi_front - self.phi_back))
+                        
+        self.t_front = self.f_l * length_front_big * cos(self.theta - self.phi_back)*sin(self.phi_front - theta_front)/sin(self.phi_front - self.phi_back)+self.t_l * length_front_big * -sin(self.theta - self.phi_back)*sin(self.phi_front - theta_front )/(self.length*sin(self.phi_front - self.phi_back))    
     
-          
-    def read_pos(self):
-        start_index = Model.sensor_adr[self.sensor_pos_id]
-        data_dim = Model.sensor_dim[self.sensor_pos_id]
-        self.position = Data.sensordata[start_index : start_index + data_dim]
-    def read_vel(self):
-        start_index = Model.sensor_adr[self.sensor_vel_id]
-        data_dim = Model.sensor_dim[self.sensor_vel_id]
-        self.vocity = Data.sensordata[start_index : start_index + data_dim]
 
-class virtual_leg_l:
-    def __init__(self, body_name=None, angle=0, longth=0, vocity=None, v_longth=0):
-        self.body_name = body_name
-        self.angle = angle
-        self.longth = longth
-        self.vocity = vocity
-        self.v_longth = v_longth
-class virtual_leg_r:
-    def __init__(self, body_name=None, angle=0, longth=0, vocity=None, v_longth=0):
-        self.body_name = body_name
-        self.angle = angle
-        self.longth = longth
-        self.vocity = vocity
-        self.v_longth = v_longth
-class bigleg1_l:
-    def __init__(self, body=None, position=[0,0,0], position_target=[0,0,0], angle=0, angle_target=0, vocity=0, force=0, gyro=[None,None,None], accel=[None,None,None], longth=0, sensor_pos_id=None, sensor_vel_id=None, sensor_force_id=None):
-        self.body_id = body
-        self.position = position
-        self.position_target = position_target
-        self.angle = angle
-        self.angle_target = angle_target
-        self.vocity = vocity
-        self.force = force
-        self.gyro = gyro
-        self.accel = accel
-        self.longth = longth
-        self.sensor_pos_id = sensor_pos_id
-        self.sensor_vel_id = sensor_vel_id
-        self.sensor_force_id = sensor_force_id
-
-    def read_pos(self):
-        start_index = Model.sensor_adr[self.sensor_pos_id]
-        data_dim = Model.sensor_dim[self.sensor_pos_id]
-        self.angle = Data.sensordata[start_index : start_index + data_dim]/1
-    def read_vel(self):
-        start_index = Model.sensor_adr[self.sensor_vel_id]
-        data_dim = Model.sensor_dim[self.sensor_vel_id]
-        self.vocity = Data.sensordata[start_index : start_index + data_dim]/1
-    def read_force(self):
-        start_index = Model.sensor_adr[self.sensor_force_id]
-        data_dim = Model.sensor_dim[self.sensor_force_id]
-        self.force = Data.sensordata[start_index : start_index + data_dim]
-
+        # self.t_back = self.f_l * length_back_big * sin(self.theta - self.phi_front)*sin(theta_back - self.phi_back)/sin(self.phi_front - self.phi_back)+self.t_l * length_back_big * cos(self.theta - self.phi_front)*sin(theta_back - self.phi_back)/(self.length*sin(self.phi_front - self.phi_back))
+                        
+        # self.t_front = self.f_l * length_front_big * sin(self.theta - self.phi_back)*sin(theta_front - self.phi_front)/sin(self.phi_front - self.phi_back)+self.t_l * length_front_big * cos(self.theta - self.phi_back)*sin(theta_front - self.phi_front)/(self.length*sin(self.phi_front - self.phi_back))    
+    
+        # self.x_vel = theta_back_vel*length_back_big*sin(theta_back - self.phi_back)*sin(self.phi_front)/sin(self.phi_back-self.phi_front) + ... 
+        # theta_front_vel*length_front_big*sin(theta_front - self.phi_front)*sin(self.phi_back)/sin(self.phi_back-self.phi_front)
         
-class bigleg2_l:
-    def __init__(self, body=None, position=[0,0,0], position_target=[0,0,0], angle=0, angle_target=0, vocity=0, force=0, gyro=[None,None,None], accel=[None,None,None], longth=0, sensor_pos_id=None, sensor_vel_id=None, sensor_force_id=None):
-        self.body_id = body
-        self.position = position
-        self.position_target = position_target
-        self.angle = angle
-        self.angle_target = angle_target
-        self.vocity = vocity
-        self.force = force
-        self.gyro = gyro
-        self.accel = accel
-        self.longth = longth
-        self.sensor_pos_id = sensor_pos_id
-        self.sensor_vel_id = sensor_vel_id
-        self.sensor_force_id = sensor_force_id
+        # self.y_vel = -theta_back_vel*length_back_big*sin(theta_back - self.phi_back)*cos(self.phi_front)/sin(self.phi_back-self.phi_front) - ... 
+        # theta_front_vel*length_front_big*sin(theta_front - self.phi_front)*cos(self.phi_back)/sin(self.phi_back-self.phi_front)
 
-    def read_pos(self):
-        start_index = Model.sensor_adr[self.sensor_pos_id]
-        data_dim = Model.sensor_dim[self.sensor_pos_id]
-        self.angle = Data.sensordata[start_index : start_index + data_dim]/1
-    def read_vel(self):
-        start_index = Model.sensor_adr[self.sensor_vel_id]
-        data_dim = Model.sensor_dim[self.sensor_vel_id]
-        self.vocity = Data.sensordata[start_index : start_index + data_dim]/1
-    def read_force(self):
-        start_index = Model.sensor_adr[self.sensor_force_id]
-        data_dim = Model.sensor_dim[self.sensor_force_id]
-        self.force = Data.sensordata[start_index : start_index + data_dim]
-          
-class smallleg1_l:
-    def __init__(self, body=None, position=[0,0,0], position_target=[0,0,0], angle=0, angle_target=0, vocity=0, force=0, gyro=[None,None,None], accel=[None,None,None], longth=0):
-        self.body_id = body
-        self.position = position
-        self.position_target = position_target
-        self.angle = angle
-        self.angle_target = angle_target
-        self.vocity = vocity
-        self.force = force
-        self.gyro = gyro
-        self.accel = accel
-        self.longth = longth
-         
-class smallleg2_l:
-    def __init__(self, body=None, position=[0,0,0], position_target=[0,0,0], angle=0, angle_target=0, vocity=0, force=0, gyro=[None,None,None], accel=[None,None,None], longth=0):
-        self.body_id = body
-        self.position = position
-        self.position_target = position_target
-        self.angle = angle
-        self.angle_target = angle_target
-        self.vocity = vocity
-        self.force = force
-        self.gyro = gyro
-        self.accel = accel
-        self.longth = longth
-
-
-class wheel_l:
-    def __init__(self, body=None, position=[0,0,0], position_target=[0,0,-0.2], angle=0, angle_target=0, vocity=0, force=0, gyro=[None,None,None], accel=[None,None,None], longth=0, sensor_pos_id=None, sensor_vel_id=None, sensor_force_id=None):
-        self.body_id = body
-        self.position = position
-        self.position_target = position_target
-        self.angle = angle
-        self.angle_target = angle_target
-        self.vocity = vocity
-        self.force = force
-        self.gyro = gyro
-        self.accel = accel
-        self.longth = longth
-        self.sensor_pos_id = sensor_pos_id
-        self.sensor_vel_id = sensor_vel_id
-        self.sensor_force_id = sensor_force_id
-
-    def read_pos(self):
-        start_index = Model.sensor_adr[self.sensor_pos_id]
-        data_dim = Model.sensor_dim[self.sensor_pos_id]
-        self.angle = Data.sensordata[start_index : start_index + data_dim]/1
-    def read_vel(self):
-        start_index = Model.sensor_adr[self.sensor_vel_id]
-        data_dim = Model.sensor_dim[self.sensor_vel_id]
-        self.vocity = Data.sensordata[start_index : start_index + data_dim]/1
-    def read_force(self):
-        start_index = Model.sensor_adr[self.sensor_force_id]
-        data_dim = Model.sensor_dim[self.sensor_force_id]
-        self.force = Data.sensordata[start_index : start_index + data_dim]
-
-class bigleg1_r:
-    def __init__(self, body=None, position=[0,0,0], position_target=[0,0,0], angle=0, angle_target=0, vocity=0, force=0, gyro=[None,None,None], accel=[None,None,None], longth=0, sensor_pos_id=None, sensor_vel_id=None, sensor_force_id=None):
-        self.body_id = body
-        self.position = position
-        self.position_target = position_target
-        self.angle = angle
-        self.angle_target = angle_target
-        self.vocity = vocity
-        self.force = force
-        self.gyro = gyro
-        self.accel = accel
-        self.longth = longth
-        self.sensor_pos_id = sensor_pos_id
-        self.sensor_vel_id = sensor_vel_id
-        self.sensor_force_id = sensor_force_id
-
-    def read_pos(self):
-        start_index = Model.sensor_adr[self.sensor_pos_id]
-        data_dim = Model.sensor_dim[self.sensor_pos_id]
-        self.angle = Data.sensordata[start_index : start_index + data_dim]/1
-    def read_vel(self):
-        start_index = Model.sensor_adr[self.sensor_vel_id]
-        data_dim = Model.sensor_dim[self.sensor_vel_id]
-        self.vocity = Data.sensordata[start_index : start_index + data_dim]/1
-    def read_force(self):
-        start_index = Model.sensor_adr[self.sensor_force_id]
-        data_dim = Model.sensor_dim[self.sensor_force_id]
-        self.force = Data.sensordata[start_index : start_index + data_dim]
-
-        
-class bigleg2_r:
-    def __init__(self, body=None, position=[0,0,0], position_target=[0,0,0], angle=0, angle_target=0, vocity=0, force=0, gyro=[None,None,None], accel=[None,None,None], longth=0, sensor_pos_id=None, sensor_vel_id=None, sensor_force_id=None,):
-        self.body_id = body
-        self.position = position
-        self.position_target = position_target
-        self.angle = angle
-        self.angle_target = angle_target
-        self.vocity = vocity
-        self.force = force
-        self.gyro = gyro
-        self.accel = accel
-        self.longth = longth
-        self.sensor_pos_id = sensor_pos_id
-        self.sensor_vel_id = sensor_vel_id
-        self.sensor_force_id = sensor_force_id
-
-    def read_pos(self):
-        start_index = Model.sensor_adr[self.sensor_pos_id]
-        data_dim = Model.sensor_dim[self.sensor_pos_id]
-        self.angle = Data.sensordata[start_index : start_index + data_dim]/1
-    def read_vel(self):
-        start_index = Model.sensor_adr[self.sensor_vel_id]
-        data_dim = Model.sensor_dim[self.sensor_vel_id]
-        self.vocity = Data.sensordata[start_index : start_index + data_dim]/1
-    def read_force(self):
-        start_index = Model.sensor_adr[self.sensor_force_id]
-        data_dim = Model.sensor_dim[self.sensor_force_id]
-        self.force = Data.sensordata[start_index : start_index + data_dim]
-
-          
-class smallleg1_r:
-    def __init__(self, body=None, position=[0,0,0], position_target=[0,0,0], angle=0, angle_target=0, vocity=0, force=0, gyro=[None,None,None], accel=[None,None,None], longth=0):
-        self.body_id = body
-        self.position = position
-        self.position_target = position_target
-        self.angle = angle
-        self.angle_target = angle_target
-        self.vocity = vocity
-        self.force = force
-        self.gyro = gyro
-        self.accel = accel
-        self.longth = longth
-        
-         
-class smallleg2_r:
-    def __init__(self, body=None, position=[0,0,0], position_target=[0,0,0], angle=0, angle_target=0, vocity=0, force=0, gyro=[None,None,None], accel=[None,None,None], longth=0):
-        self.body_id = body
-        self.position = position
-        self.position_target = position_target
-        self.angle = angle
-        self.angle_target = angle_target
-        self.vocity = vocity
-        self.force = force
-        self.gyro = gyro
-        self.accel = accel
-        self.longth = longth
-
-class wheel_r:
-    def __init__(self, body=None, position=[0,0,0], position_target=[0,0,-0.2], angle=0, angle_target=0, vocity=0, force=0, gyro=[None,None,None], accel=[None,None,None], longth=0, sensor_pos_id=None, sensor_vel_id=None, sensor_force_id=None):
-        self.body_id = body
-        self.position = position
-        self.position_target = position_target
-        self.angle = angle
-        self.angle_target = angle_target
-        self.vocity = vocity
-        self.force = force
-        self.gyro = gyro
-        self.accel = accel
-        self.longth = longth
-        self.sensor_pos_id = sensor_pos_id
-        self.sensor_vel_id = sensor_vel_id
-        self.sensor_force_id = sensor_force_id
-
-    def read_pos(self):
-        start_index = Model.sensor_adr[self.sensor_pos_id]
-        data_dim = Model.sensor_dim[self.sensor_pos_id]
-        self.angle = Data.sensordata[start_index : start_index + data_dim]/1
-    def read_vel(self):
-        start_index = Model.sensor_adr[self.sensor_vel_id]
-        data_dim = Model.sensor_dim[self.sensor_vel_id]
-        self.vocity = Data.sensordata[start_index : start_index + data_dim]/1
-    def read_force(self):
-        start_index = Model.sensor_adr[self.sensor_force_id]
-        data_dim = Model.sensor_dim[self.sensor_force_id]
-        self.force = Data.sensordata[start_index : start_index + data_dim]
-
-
-
-class leg_l:
+class State:
     def __init__(self):
-        self.bigleg1 = bigleg1_l()
-        self.bigleg2 = bigleg2_l()
-        self.smallleg1 = smallleg1_l()
-        self.smallleg2 = smallleg2_l()
-        self.wheel = wheel_l()
-        self.virtual_leg = virtual_leg_l()
-    def calculate(self):
-        self.virtual_leg.angle = atan2(0-self.wheel.position[0],self.wheel.position[2]-0)
-        self.virtual_leg.longth = sqrt(self.wheel.position[2]**2 +self.wheel.position[0]**2)
-        self.virtual_leg.vocity = (self.bigleg1.vocity)*self.bigleg1.longth/self.virtual_leg.longth*cos(self.smallleg1.angle+self.virtual_leg.angle)*sin(self.smallleg1.angle-self.bigleg1.angle)
-        +self.bigleg2.vocity*self.bigleg2.longth/self.virtual_leg.longth*cos(self.smallleg2.angle+self.virtual_leg.angle)*sin(self.smallleg2.angle-self.bigleg2.angle)
-        self.virtual_leg.v_longth =(self.bigleg1.vocity)*self.bigleg1.longth/self.virtual_leg.longth*sin(self.smallleg1.angle+self.virtual_leg.angle)*sin(self.smallleg1.angle-self.bigleg1.angle)
-        +self.bigleg2.vocity*self.bigleg2.longth/self.virtual_leg.longth*sin(self.smallleg2.angle+self.virtual_leg.angle)*sin(self.smallleg2.angle-self.bigleg2.angle)
+        self.x = np.zeros((10, 1)) # x, w, theta, theta_l, theta_r, x_dot, w_dot, theta_dot, theta_l_dot, theta_r_dot
+
+        self.x_target = np.zeros((10, 1))
         
-class leg_r:
-    def __init__(self):
-        self.bigleg1 = bigleg1_r()
-        self.bigleg2 = bigleg2_r()
-        self.smallleg1 = smallleg1_r()
-        self.smallleg2 = smallleg2_r()
-        self.wheel = wheel_r()
-        self.virtual_leg = virtual_leg_r()
-    def calculate(self):
-        self.virtual_leg.angle = atan2(0-self.wheel.position[0],self.wheel.position[2]-0)
-        self.virtual_leg.longth = sqrt(self.wheel.position[2]**2 +self.wheel.position[0]**2)
-        self.virtual_leg.vocity = self.bigleg1.vocity*self.bigleg1.longth/self.virtual_leg.longth*cos(self.smallleg1.angle+self.virtual_leg.angle)*sin(self.smallleg1.angle-(self.bigleg1.angle))
-        +(self.bigleg2.vocity)*self.bigleg2.longth/self.virtual_leg.longth*cos(self.smallleg2.angle+self.virtual_leg.angle)*sin(self.smallleg2.angle-(self.bigleg2.angle))
-        self.virtual_leg.v_longth = self.bigleg1.vocity*self.bigleg1.longth/self.virtual_leg.longth*sin(self.smallleg1.angle+self.virtual_leg.angle)*sin(self.smallleg1.angle-(self.bigleg1.angle))
-        +(self.bigleg2.vocity)*self.bigleg2.longth/self.virtual_leg.longth*sin(self.smallleg2.angle+self.virtual_leg.angle)*sin(self.smallleg2.angle-(self.bigleg2.angle))
-
-
-class robot:
-    def __init__(self):
-        self.gimbal = gimbal()
-        self.leg_l = leg_l()
-        self.leg_r = leg_r()
-
-    def read(self):
-        self.gimbal.read_gyro()
-        self.gimbal.read_quat()
-        self.gimbal.read_pos()
-        self.gimbal.read_vel()
-        self.leg_l.bigleg1.read_pos()
-        self.leg_l.bigleg2.read_pos()
-        self.leg_r.bigleg1.read_pos()
-        self.leg_r.bigleg2.read_pos()
-        self.leg_l.wheel.read_pos()
-        self.leg_r.wheel.read_pos()
-        self.leg_l.bigleg1.read_vel()
-        self.leg_l.bigleg2.read_vel()
-        self.leg_r.bigleg1.read_vel()
-        self.leg_r.bigleg2.read_vel()
-        self.leg_l.wheel.read_vel()
-        self.leg_r.wheel.read_vel()
-        self.leg_l.bigleg1.read_force()
-        self.leg_l.bigleg2.read_force()
-        self.leg_r.bigleg1.read_force()
-        self.leg_r.bigleg2.read_force()
-        self.leg_l.wheel.read_force()
-        self.leg_r.wheel.read_force()
-    def write(self,gyro_id, quat_id,pos_id,vel_id,
-                pos1_id, pos2_id, pos3_id, pos4_id,pos5_id, pos6_id, 
-                vel1_id, vel2_id, vel3_id, vel4_id, vel5_id, vel6_id,
-                force1_id, force2_id, force3_id, force4_id, force5_id, force6_id,
-                bigleg, smallleg, r,d):
+        self.u = np.zeros((4, 1)) # 
+    def update_state(self, Leg_left, Leg_right, length, motor,imu, dt):
         
-        self.gimbal.sensor_gyro_id = gyro_id
-        self.gimbal.sensor_quat_id = quat_id
-        self.gimbal.sensor_pos_id = pos_id
-        self.gimbal.sensor_vel_id = vel_id
+        Leg_left.theta_dot.Diff(Leg_left.theta)
+        Leg_right.theta_dot.Diff(Leg_right.theta)
 
-        self.leg_l.bigleg1.sensor_pos_id = pos1_id
-        self.leg_l.bigleg2.sensor_pos_id = pos3_id
-        self.leg_l.wheel.sensor_pos_id = pos5_id
+        self.x[0,0] = (length["left_wheel"]*motor["left_wheel_pos"] + length["right_wheel"]*motor["right_wheel_pos"])*0.5#+Leg_left.theta*Leg_left.length+Leg_right.theta*Leg_right.length
+        self.x[1,0] = (-length["left_wheel"]*motor["left_wheel_pos"] + length["right_wheel"]*motor["right_wheel_pos"])*0.5/length["R"]
+        self.x[2,0] =imu["euler"][1]# self.x[7,0]*dt#
+        self.x[3,0] = Leg_left.theta
+        self.x[4,0] = Leg_right.theta
 
-        self.leg_r.bigleg1.sensor_pos_id = pos2_id
-        self.leg_r.bigleg2.sensor_pos_id = pos4_id
-        self.leg_r.wheel.sensor_pos_id = pos6_id
+        self.x[5,0] = (length["left_wheel"]*motor["left_wheel_vel"] + length["right_wheel"]*motor["right_wheel_vel"])*0.5#+Leg_left.theta_dot.diff_num*Leg_left.length+Leg_right.theta_dot.diff_num*Leg_right.length
+        self.x[6,0] = (-length["left_wheel"]*motor["left_wheel_vel"] + length["right_wheel"]*motor["right_wheel_vel"])*0.5/length["R"]
+        self.x[7,0] = imu["gyro"][1]
+        self.x[8,0] = Leg_left.theta_dot.diff_num
+        self.x[9,0] = Leg_right.theta_dot.diff_num
+        return self.x
+    def update_target(self, x_target, w_target, x_dot_target, w_dot_target):
+
+        self.x_target[0,0] = x_target
+        self.x_target[1,0] = w_target
+        self.x_target[2,0] = 0.0
+        self.x_target[3,0] = 0.0
+        self.x_target[4,0] = 0.0
+        self.x_target[5,0] = x_dot_target
+        self.x_target[6,0] = w_dot_target
+        self.x_target[7,0] = 0.0
+        self.x_target[8,0] = 0.0
+        self.x_target[9,0] = 0.0
+        return self.x_target
+    def update_control(self, u):
+
+        self.u[0,0] = u[0]
+        self.u[1,0] = u[1]
+        self.u[2,0] = u[2]
+        self.u[3,0] = u[3]
+        return self.u
+
         
-        self.leg_l.bigleg1.sensor_vel_id = vel1_id
-        self.leg_l.bigleg2.sensor_vel_id = vel3_id
-        self.leg_l.wheel.sensor_vel_id = vel5_id
-
-        self.leg_r.bigleg1.sensor_vel_id = vel2_id
-        self.leg_r.bigleg2.sensor_vel_id = vel4_id
-        self.leg_r.wheel.sensor_vel_id = vel6_id
-
-        self.leg_l.bigleg1.sensor_force_id = force1_id
-        self.leg_l.bigleg2.sensor_force_id = force3_id
-        self.leg_l.wheel.sensor_force_id = force5_id
-
-        self.leg_r.bigleg1.sensor_force_id = force2_id
-        self.leg_r.bigleg2.sensor_force_id = force4_id
-        self.leg_r.wheel.sensor_force_id = force6_id
-
-        self.leg_l.bigleg1.longth = bigleg
-        self.leg_l.bigleg2.longth = bigleg
-        self.leg_l.smallleg1.longth = smallleg
-        self.leg_l.smallleg2.longth = smallleg
-        self.leg_l.wheel.longth = r
-
-        self.leg_r.bigleg1.longth = bigleg
-        self.leg_r.bigleg2.longth = bigleg
-        self.leg_r.smallleg1.longth = smallleg
-        self.leg_r.smallleg2.longth = smallleg
-        self.leg_r.wheel.longth = r
-
-        self.gimbal.longth = d
-
-    def forward(self):
-        
-        self.leg_r.bigleg1.position[0]=self.gimbal.longth*cos(self.gimbal.angle)
-        self.leg_r.bigleg1.position[2]=self.gimbal.longth*sin(self.gimbal.angle)
-
-        self.leg_r.bigleg2.position[0]=-self.gimbal.longth*cos(self.gimbal.angle)
-        self.leg_r.bigleg2.position[2]=-self.gimbal.longth*sin(self.gimbal.angle)
-
-        self.leg_r.smallleg1.position[0] = self.leg_r.bigleg1.position[0] + self.leg_r.bigleg1.longth * cos(self.leg_r.bigleg1.angle)
-        self.leg_r.smallleg1.position[2] = self.leg_r.bigleg1.position[2] + self.leg_r.bigleg1.longth * sin(self.leg_r.bigleg1.angle)
-
-        self.leg_r.smallleg2.position[0] = self.leg_r.bigleg2.position[0] + self.leg_r.bigleg2.longth * cos(self.leg_r.bigleg2.angle)
-        self.leg_r.smallleg2.position[2] = self.leg_r.bigleg2.position[2] + self.leg_r.bigleg2.longth * sin(self.leg_r.bigleg2.angle)
-
-        p = self.leg_r.smallleg1.position[2]-self.leg_r.smallleg2.position[2]
-        q = self.leg_r.smallleg1.position[0]-self.leg_r.smallleg2.position[0]
-        a = self.leg_r.smallleg2.longth**2-self.leg_r.smallleg1.longth**2-p**2-q**2+2*q*self.leg_r.smallleg1.longth
-        b = -4*p*self.leg_r.smallleg2.longth
-        c = self.leg_r.smallleg2.longth**2-self.leg_r.smallleg1.longth**2-p**2-q**2-2*q*self.leg_r.smallleg1.longth
-
-
-        z1 = 0.5 * (-b + sqrt(b**2-4*a*c))/a
-        z2 = 0.5 * (-b - sqrt(b**2-4*a*c))/a
-
-        if 2 * atan(z1) > pi/2 :
-                self.leg_r.smallleg1.angle = 2 * atan(z1)
-        else:
-                self.leg_r.smallleg1.angle = 2 * atan(z2)
-
-
-        self.leg_r.wheel.position[0] = self.leg_r.smallleg1.position[0] + self.leg_r.smallleg1.longth * cos(self.leg_r.smallleg1.angle)
-        self.leg_r.wheel.position[2] = self.leg_r.smallleg1.position[2] + self.leg_r.smallleg1.longth * sin(self.leg_r.smallleg1.angle)
-#####################
-        p = -(self.leg_r.smallleg1.position[2]-self.leg_r.smallleg2.position[2])
-        q = -(self.leg_r.smallleg1.position[0]-self.leg_r.smallleg2.position[0])
-        a = self.leg_r.smallleg2.longth**2-self.leg_r.smallleg1.longth**2-p**2-q**2+2*q*self.leg_r.smallleg1.longth
-        b = -4*p*self.leg_r.smallleg2.longth
-        c = self.leg_r.smallleg2.longth**2-self.leg_r.smallleg1.longth**2-p**2-q**2-2*q*self.leg_r.smallleg1.longth
-
-
-        z1 = 0.5 * (-b + sqrt(b**2-4*a*c))/a
-        z2 = 0.5 * (-b - sqrt(b**2-4*a*c))/a
-
-        if 2 * atan(z1) < pi/2 :
-                self.leg_r.smallleg2.angle = 2 * atan(z1)
-        else:
-                self.leg_r.smallleg2.angle = 2 * atan(z2)
-
-        self.leg_r.calculate()
-#############################################################################################################################################
-        self.leg_l.bigleg1.position[0]=self.gimbal.longth*cos(self.gimbal.angle)
-        self.leg_l.bigleg1.position[2]=self.gimbal.longth*sin(self.gimbal.angle)
-
-        self.leg_l.bigleg2.position[0]=-self.gimbal.longth*cos(self.gimbal.angle)
-        self.leg_l.bigleg2.position[2]=-self.gimbal.longth*sin(self.gimbal.angle)
-
-        self.leg_l.smallleg1.position[0] = self.leg_l.bigleg1.position[0] + self.leg_l.bigleg1.longth * cos(self.leg_l.bigleg1.angle)
-        self.leg_l.smallleg1.position[2] = self.leg_l.bigleg1.position[2] + self.leg_l.bigleg1.longth * sin(self.leg_l.bigleg1.angle)
-
-        self.leg_l.smallleg2.position[0] = self.leg_l.bigleg2.position[0] + self.leg_l.bigleg2.longth * cos(self.leg_l.bigleg2.angle)
-        self.leg_l.smallleg2.position[2] = self.leg_l.bigleg2.position[2] + self.leg_l.bigleg2.longth * sin(self.leg_l.bigleg2.angle)
-
-        p = self.leg_l.smallleg1.position[2]-self.leg_l.smallleg2.position[2]
-        q = self.leg_l.smallleg1.position[0]-self.leg_l.smallleg2.position[0]
-        a = self.leg_l.smallleg2.longth**2-self.leg_l.smallleg1.longth**2-p**2-q**2+2*q*self.leg_l.smallleg1.longth
-        b = -4*p*self.leg_l.smallleg2.longth
-        c = self.leg_l.smallleg2.longth**2-self.leg_l.smallleg1.longth**2-p**2-q**2-2*q*self.leg_l.smallleg1.longth
-
-
-        z1 = 0.5 * (-b + sqrt(b**2-4*a*c))/a
-        z2 = 0.5 * (-b - sqrt(b**2-4*a*c))/a
-
-        if 2 * atan(z1) > pi/2 :
-                self.leg_l.smallleg1.angle = 2 * atan(z1)
-        else:
-                self.leg_l.smallleg1.angle = 2 * atan(z2)
-
-
-        self.leg_l.wheel.position[0] = self.leg_l.smallleg1.position[0] + self.leg_l.smallleg1.longth * cos(self.leg_l.smallleg1.angle)
-        self.leg_l.wheel.position[2] = self.leg_l.smallleg1.position[2] + self.leg_l.smallleg1.longth * sin(self.leg_l.smallleg1.angle)
-####################################
-        p = -(self.leg_l.smallleg1.position[2]-self.leg_l.smallleg2.position[2])
-        q = -(self.leg_l.smallleg1.position[0]-self.leg_l.smallleg2.position[0])
-        a = self.leg_l.smallleg2.longth**2-self.leg_l.smallleg1.longth**2-p**2-q**2+2*q*self.leg_l.smallleg1.longth
-        b = -4*p*self.leg_l.smallleg2.longth
-        c = self.leg_l.smallleg2.longth**2-self.leg_l.smallleg1.longth**2-p**2-q**2-2*q*self.leg_l.smallleg1.longth
-
-
-        z1 = 0.5 * (-b + sqrt(b**2-4*a*c))/a
-        z2 = 0.5 * (-b - sqrt(b**2-4*a*c))/a
-
-        if 2 * atan(z1) < pi/2 :
-                self.leg_l.smallleg2.angle = 2 * atan(z1)
-        else:
-                self.leg_l.smallleg2.angle = 2 * atan(z2)
-        self.leg_l.calculate()
-        
-
-
-    def backward(self):
-        self.leg_r.bigleg1.position[0]=self.gimbal.longth*cos(self.gimbal.angle)
-        self.leg_r.bigleg1.position[2]=self.gimbal.longth*sin(self.gimbal.angle)
-
-        self.leg_r.bigleg2.position[0]=-self.gimbal.longth*cos(self.gimbal.angle)
-        self.leg_r.bigleg2.position[2]=-self.gimbal.longth*sin(self.gimbal.angle)
-
-        p = self.leg_r.wheel.position_target[2]-self.leg_r.bigleg1.position[2]
-        q = self.leg_r.wheel.position_target[0]-self.leg_r.bigleg1.position[0]
-
-        a = q**2+p**2+self.leg_r.bigleg1.longth**2-self.leg_r.smallleg1.longth**2+2*self.leg_r.bigleg1.longth*self.leg_r.wheel.position_target[0]
-        b = -4*self.leg_r.bigleg1.longth*p
-        c = q**2+p**2+self.leg_r.bigleg1.longth**2-self.leg_r.smallleg1.longth**2-2*self.leg_r.bigleg1.longth*self.leg_r.wheel.position_target[0]
-        z1 = 0.5 * (-b + sqrt(b**2-4*a*c))/a
-        z2 = 0.5 * (-b - sqrt(b**2-4*a*c))/a
-
-        if 2 * atan(z1) < pi/2 :
-                self.leg_r.bigleg1.angle_target = 2 * atan(z1)
-        else:
-                self.leg_r.bigleg1.angle_target = 2 * atan(z2)
-        
-        p = self.leg_r.wheel.position_target[2]-self.leg_r.bigleg2.position[2]
-        q = self.leg_r.wheel.position_target[0]-self.leg_r.bigleg2.position[0]
-
-        a = q**2+p**2+self.leg_r.bigleg2.longth**2-self.leg_r.smallleg1.longth**2+2*self.leg_r.bigleg2.longth*self.leg_r.wheel.position_target[0]
-        b = -4*self.leg_r.bigleg2.longth*self.leg_r.wheel.position_target[2]
-        c = q**2+p**2+self.leg_r.bigleg2.longth**2-self.leg_r.smallleg1.longth**2-2*self.leg_r.bigleg2.longth*self.leg_r.wheel.position_target[0]
-        z1 = 0.5 * (-b + sqrt(b**2-4*a*c))/a
-        z2 = 0.5 * (-b - sqrt(b**2-4*a*c))/a
-
-        if 2 * atan(z1) > pi/2:
-                self.leg_r.bigleg2.angle_target = 2 * atan(z1)
-        else:
-                self.leg_r.bigleg2.angle_target = 2 * atan(z2)
-######################################################################################################################################################
-        self.leg_l.bigleg1.position[0]=self.gimbal.longth*cos(self.gimbal.angle)
-        self.leg_l.bigleg1.position[2]=self.gimbal.longth*sin(self.gimbal.angle)
-
-        self.leg_l.bigleg2.position[0]=-self.gimbal.longth*cos(self.gimbal.angle)
-        self.leg_l.bigleg2.position[2]=-self.gimbal.longth*sin(self.gimbal.angle)
-
-        p = self.leg_l.wheel.position_target[2]-self.leg_l.bigleg1.position[2]
-        q = self.leg_l.wheel.position_target[0]-self.leg_l.bigleg1.position[0]
-
-        a = q**2+p**2+self.leg_l.bigleg1.longth**2-self.leg_l.smallleg1.longth**2+2*self.leg_l.bigleg1.longth*self.leg_l.wheel.position_target[0]
-        b = -4*self.leg_l.bigleg1.longth*self.leg_l.wheel.position_target[2]
-        c = q**2+p**2+self.leg_l.bigleg1.longth**2-self.leg_l.smallleg1.longth**2-2*self.leg_l.bigleg1.longth*self.leg_l.wheel.position_target[0]
-        z1 = 0.5 * (-b + sqrt(b**2-4*a*c))/a
-        z2 = 0.5 * (-b - sqrt(b**2-4*a*c))/a
-
-        if 2 * atan(z1) < pi/2:
-                
-                self.leg_l.bigleg1.angle_target = 2 * atan(z1)
-        else:
-                self.leg_l.bigleg1.angle_target = 2 * atan(z2)
-        
-        p = self.leg_l.wheel.position_target[2]-self.leg_l.bigleg2.position[2]
-        q = self.leg_l.wheel.position_target[0]-self.leg_l.bigleg2.position[0]
-
-        a = q**2+p**2+self.leg_l.bigleg2.longth**2-self.leg_l.smallleg1.longth**2+2*self.leg_l.bigleg2.longth*self.leg_l.wheel.position_target[0]
-        b = -4*self.leg_l.bigleg2.longth*self.leg_l.wheel.position_target[2]
-        c = q**2+p**2+self.leg_l.bigleg2.longth**2-self.leg_l.smallleg1.longth**2-2*self.leg_l.bigleg2.longth*self.leg_l.wheel.position_target[0]
-        z1 = 0.5 * (-b + sqrt(b**2-4*a*c))/a
-        z2 = 0.5 * (-b - sqrt(b**2-4*a*c))/a
-
-        if 2 * atan(z1) > pi/2:
-                self.leg_l.bigleg2.angle_target = 2 * atan(z1)
-        else:
-                self.leg_l.bigleg2.angle_target = 2 * atan(z2)
-
-
 
 class LowPassFilter:
     def __init__(self, alpha=0.1):

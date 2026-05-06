@@ -9,22 +9,22 @@ data = scipy.io.loadmat('sys_matrices.mat')
 
 n = 100000
 
-z = np.zeros((n, 10, 1))
-u = np.zeros((n, 6, 1))
-u_best = np.zeros((n, 6, 1))
+z = np.zeros((n, 24, 1))
+u = np.zeros((n, 4, 1))
+u_best = np.zeros((n, 4, 1))
 
-P = np.zeros((n, 10, 10))
-F = np.zeros((n, 6, 10))
+P = np.zeros((n, 24, 24))
+F = np.zeros((n, 4, 24))
 
 q_diag = np.array([
-    800,    # x: 100
-    800,     # w: 10
-    10000,   # theta: 5000 (身体俯仰是最重要的！)
-    50,    # theta_l: 500
-    50,    # theta_r: 500
-    15,     # x_dot
+    1,    # x: 100
+    1,     # w: 10
+    5000,   # theta: 5000 (身体俯仰是最重要的！)
+    1,    # theta_l: 500
+    1,    # theta_r: 500
+    1,     # x_dot
     1,      # w_dot
-    15,    # theta_dot
+    1,    # theta_dot
     1,     # theta_dot_l
     1      # theta_dot_r
 ])
@@ -56,13 +56,11 @@ Q = S
 #              [0,0,0,0,0,0,0,1,0,0],
 #              [0,0,0,0,0,0,0,0,1,0],
 #              [0,0,0,0,0,0,0,0,0,1]])
-R = 50*np.array(
-            [[1,0,0,0,0,0],
-             [0,1,0,0,0,0],
-             [0,0,1,0,0,0],
-             [0,0,0,1,0,0],
-             [0,0,0,0,0.5,0],
-             [0,0,0,0,0,0.5]])
+R = np.array(
+            [[1,0,0,0],
+             [0,1,0,0],
+             [0,0,1,0],
+             [0,0,0,1]])
 
 J = np.zeros(n)
 J_best = np.zeros(n)
@@ -74,7 +72,37 @@ D = data['D']
 system_discrete = cont2discrete((A, B, C, D), 0.002, method='zoh')
 Ad, Bd, Cd, Dd, dt = system_discrete
 print("A matrix shape:", Ad.shape)
-print(Ad)
+
+At = np.eye(10)
+I = np.eye(4)
+# I = np.eye(10)
+
+
+
+Aa = np.block([[Ad,np.zeros((10,10)),Bd],
+      [np.zeros((10,10)),At,np.zeros((10,4))],
+      [np.zeros((4,10)),np.zeros((4,10)),I]])
+# Aa = np.block([[Ad,I-Ad],
+#       [np.zeros((10,10)),I]])
+
+Ba = np.block([[Bd],
+      [np.zeros((10,4))],
+      [I]])
+
+# Ba = np.block([[Bd],
+#       [np.zeros((10,4))]])
+
+Ca = np.block([np.eye(10),-np.eye(10),np.zeros((10,4))])
+
+# Ca = np.block([np.eye(10),-np.eye(10)])
+
+print(Aa)
+print(Ba)
+print(Ca)
+
+Sa = Ca.T @ S @ Ca
+Qa = Ca.T @ Q @ Ca
+Ra = R
 
 # P[n-1] = S
 # J[n-1] = 1/2 * z[n-1].T @ P[n-1] @ z[n-1] 
@@ -125,15 +153,22 @@ from scipy.linalg import solve_discrete_are
 
 
 
-P_steady = solve_discrete_are(Ad, Bd, Q, R)
+P_steady =Sa
+# P_steady =S
 #F_steady
-F_convergence= np.linalg.inv(Bd.T @ P_steady @ Bd + R) @ (Bd.T @ P_steady @ Ad)
+for i in range(0,n):
+      F_convergence= np.linalg.inv(Ba.T @ P_steady @ Ba + Ra) @ (Ba.T @ P_steady @ Aa)
+      P_steady = (Aa - Ba @ F_convergence).T @ P_steady @ (Aa - Ba @ F_convergence) + F_convergence.T @ Ra @ F_convergence + Qa
+      # F_convergence= np.linalg.inv(Bd.T @ P_steady @ Bd + R) @ (Bd.T @ P_steady @ Ad)
+      # P_steady = (Ad - Bd @ F_convergence).T @ P_steady @ (Ad - Bd @ F_convergence) + F_convergence.T @ R @ F_convergence + Q
+
+
 print(F_convergence)
 
 
 # 库函数计算结果
 # 在 Python 中执行
-Ad_cl = Ad - Bd @ F_convergence
-e = np.linalg.eigvals(Ad_cl)
-print(f"闭环最大特征值: {np.max(np.abs(e))}")
+# Ad_cl = Ad - Bd @ F_convergence
+# e = np.linalg.eigvals(Ad_cl)
+# print(f"闭环最大特征值: {np.max(np.abs(e))}")
 
