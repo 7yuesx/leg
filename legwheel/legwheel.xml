@@ -1,17 +1,25 @@
 <mujoco>
     <option timestep="0.002" integrator="RK4" />
 
+    <asset>
+        <!-- 最新方式：直接在XML中嵌入高程数据 -->
+        
+        <hfield name="my_terrain" 
+                size="1 1 0.5 0.5" 
+                nrow="2" 
+                ncol="2" 
+                elevation="1.0 0.0 1.0 0.0"/>
+    </asset>
 
     <worldbody>
         <!-- 光源 -->
+        
         <light diffuse=".5 .5 .5" pos="0 0 3" dir="0 0 -1"/>
         <geom type="plane" size="200 200 0.1" rgba=".9 .9 .9 1" friction="1.0 0.001 0.0001" condim="6"/>
         <body name="bigbox" pos="-1 0 0">
-            <!-- <geom type="box"  pos="-0.4 0 0" size="0.2 0.5 0.005" rgba="1 1 1 1" friction="0.7 0.001 0.0001 " euler="0 -15 0" density="1000000"/>
-            <geom type="box"  pos="0.4 0 0" size="0.2 0.5 0.005" rgba="1 1 1 1" friction="0.7 0.001 0.0001 " euler="0 15 0" density="1000000"/>
-            <geom type="box"  pos="0 0 0.052" size="0.21 0.5 0.005" rgba="1 1 1 1" friction="0.7 0.001 0.0001 " density="1000000"/> -->
+            <geom name="terrain_geom" type="hfield" hfield="my_terrain" pos="0 0 0" rgba="0.7 0.8 0.9 1" friction="0.8 0.005 0.0001"/>
         </body>                           
-        <body name="gimbal" pos="0 0 0.21">
+        <body name="gimbal" pos="0 0 0.331">
             <joint type="free"/>
             <site name="imu_site" pos="0 0 0"/> 
             <geom type="box" size="0.15 0.15 0.025" rgba="0.8 0.8 0.8 1" density="4500"/>
@@ -23,8 +31,8 @@
                         <joint name="joint1_1" pos="0 0 0.1175" type="hinge" axis="0 1 0" ref="143.13" damping="0.01"/>
                         <geom type="box" size="0.0075 0.005 0.125" rgba="0.2 0.2 0.2 1" density="7000"/>
                         <body name="wheel1" pos="0 0.005 -0.1175">
-                            <joint name="joint1__2" pos="0 0 0" type="hinge" axis="0 1 0" limited="false"/>
-                            <geom type="cylinder" fromto="0 0 0 0 0.005 0" size="0.020 " rgba="1 1 1 1" condim="6" friction="0.8 0.005 0.0001 " density="4500" solref="0.005 1" solimp="0.9 0.95 0.001"/>
+                            <joint name="joint1__2" pos="0 0 0" type="hinge" axis="0 1 0" limited="false" damping="0.01"/>
+                            <geom type="cylinder" fromto="0 0 0 0 0.005 0" size="0.050 " rgba="1 1 1 1" condim="6" friction="0.8 0.005 0.0001 " density="4500" solref="0.005 1" solimp="0.9 0.95 0.001"/>
                         </body>
                     </body>
                 </body>
@@ -37,8 +45,8 @@
                         <joint name="joint2_1" pos="0 0 0.1175" type="hinge" axis="0 1 0" ref="143.13" damping="0.01"/>
                         <geom type="box" size="0.0075 0.005 0.125" rgba="0.2 0.2 0.2 1" density="7000"/>
                         <body name="wheel2" pos="0 -0.005 -0.1175">
-                            <joint name="joint2__2" pos="0 0 0" type="hinge" axis="0 1 0" limited="false"/>
-                            <geom type="cylinder" fromto="0 0 0 0 -0.005 0" size="0.020 " rgba="1 1 1 1" condim="6" friction="0.8 0.005 0.0001 " density="4500" solref="0.005 1" solimp="0.9 0.95 0.001"/>
+                            <joint name="joint2__2" pos="0 0 0" type="hinge" axis="0 1 0" limited="false" damping="0.01"/>
+                            <geom type="cylinder" fromto="0 0 0 0 -0.005 0" size="0.050 " rgba="1 1 1 1" condim="6" friction="0.8 0.005 0.0001 " density="4500" solref="0.005 1" solimp="0.9 0.95 0.001"/>
                         </body>
                     </body>
                 </body>
@@ -52,8 +60,8 @@
                         <joint name="joint3_1" pos="0 0 0.1175" type="hinge" axis="0 1 0" ref="36.87" damping="0.01"/>
                         <geom type="box" size="0.0075 0.005 0.125" rgba="0.2 0.2 0.2 1" density="7000"/>
                         <body name="wheel3" pos="0 -0.005 -0.1175">
-                            <joint name="joint3__2" pos="0 0 0" type="hinge" axis="0 1 0" limited="false"/>
-                            <geom type="cylinder" fromto="0 0 0 0 -0.005 0" size="0.020 " rgba="1 1 1 1" condim="6" friction="0.8 0.005 0.0001 " density="4500" solref="0.005 1" solimp="0.9 0.95 0.001"/>
+                            <joint name="joint3__2" pos="0 0 0" type="hinge" axis="0 1 0" limited="false" damping="0.01"/>
+                            <geom type="cylinder" fromto="0 0 0 0 -0.005 0" size="0.050 " rgba="1 1 1 1" condim="6" friction="0.8 0.005 0.0001 " density="4500" solref="0.005 1" solimp="0.9 0.95 0.001"/>
                         </body>
                     </body>
                 </body>
@@ -67,8 +75,8 @@
                         <joint name="joint4_1" pos="0 0 0.1175" type="hinge" axis="0 1 0" ref="36.87" damping="0.01"/>
                         <geom type="box" size="0.0075 0.005 0.125" rgba="0.2 0.2 0.2 1" density="7000"/>
                         <body name="wheel4" pos="0 0.005 -0.1175">
-                            <joint name="joint4__2" pos="0 0 0" type="hinge" axis="0 1 0" limited="false"/>
-                            <geom type="cylinder" fromto="0 0 0 0 0.005 0" size="0.020 " rgba="1 1 1 1" condim="6" friction="0.8 0.005 0.0001 " density="4500" solref="0.005 1" solimp="0.9 0.95 0.001"/>
+                            <joint name="joint4__2" pos="0 0 0" type="hinge" axis="0 1 0" limited="false" damping="0.01"/>
+                            <geom type="cylinder" fromto="0 0 0 0 0.005 0" size="0.050 " rgba="1 1 1 1" condim="6" friction="0.8 0.005 0.0001 " density="4500" solref="0.005 1" solimp="0.9 0.95 0.001"/>
                         </body>
                     </body>
                 </body>

@@ -112,8 +112,10 @@ class Leg:
         self.name = name
         self.length = 0.0
         self.length_dot = Discreteness(dt)
+        self.length_ddot = Discreteness(dt)
         self.theta = 0.0
         self.theta_dot = Discreteness(dt)
+        self.theta_ddot = Discreteness(dt)
 
         self.phi_front = 0.0
         self.phi_back = 0.0
@@ -163,7 +165,7 @@ class Leg:
         self.phi_front = np.arctan2(y_c - y_d, x_c - x_d)
 
         self.length = sqrt(x_c ** 2 + y_c ** 2)
-        self.theta = -(atan2(x_c, y_c)-imu["euler"][1])
+        self.theta = (-atan2(x_c, y_c)+imu["euler"][1])
 
         self.x_vel = x_c
         self.y_vel = y_c
@@ -203,19 +205,19 @@ class State:
         self.x_target = np.zeros((10, 1))
         
         self.u = np.zeros((4, 1)) # 
-    def update_state(self, Leg_left, Leg_right, length, motor,imu, dt):
+    def update_state(self, Leg_left, Leg_right, length, motor,imu, road):
         
         Leg_left.theta_dot.Diff(Leg_left.theta)
         Leg_right.theta_dot.Diff(Leg_right.theta)
 
-        self.x[0,0] = (length["left_wheel"]*motor["left_wheel_pos"] + length["right_wheel"]*motor["right_wheel_pos"])*0.5#+Leg_left.theta*Leg_left.length+Leg_right.theta*Leg_right.length
-        self.x[1,0] = (-length["left_wheel"]*motor["left_wheel_pos"] + length["right_wheel"]*motor["right_wheel_pos"])*0.5/length["R"]
+        self.x[0,0] = road.x[0,0]#(length["left_wheel"]*motor["left_wheel_pos"] + length["right_wheel"]*motor["right_wheel_pos"])*0.5#+Leg_left.theta*Leg_left.length+Leg_right.theta*Leg_right.length
+        self.x[1,0] = imu["euler"][2]#(-length["left_wheel"]*motor["left_wheel_pos"] + length["right_wheel"]*motor["right_wheel_pos"])*0.5/length["R"]
         self.x[2,0] =imu["euler"][1]# self.x[7,0]*dt#
         self.x[3,0] = Leg_left.theta
         self.x[4,0] = Leg_right.theta
 
-        self.x[5,0] = (length["left_wheel"]*motor["left_wheel_vel"] + length["right_wheel"]*motor["right_wheel_vel"])*0.5#+Leg_left.theta_dot.diff_num*Leg_left.length+Leg_right.theta_dot.diff_num*Leg_right.length
-        self.x[6,0] = (-length["left_wheel"]*motor["left_wheel_vel"] + length["right_wheel"]*motor["right_wheel_vel"])*0.5/length["R"]
+        self.x[5,0] = road.x[1,0]#(length["left_wheel"]*motor["left_wheel_vel"] + length["right_wheel"]*motor["right_wheel_vel"])*0.5#+Leg_left.theta_dot.diff_num*Leg_left.length+Leg_right.theta_dot.diff_num*Leg_right.length
+        self.x[6,0] = imu["gyro"][2]#(-length["left_wheel"]*motor["left_wheel_vel"] + length["right_wheel"]*motor["right_wheel_vel"])*0.5/length["R"]
         self.x[7,0] = imu["gyro"][1]
         self.x[8,0] = Leg_left.theta_dot.diff_num
         self.x[9,0] = Leg_right.theta_dot.diff_num

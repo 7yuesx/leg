@@ -17,11 +17,11 @@ P = np.zeros((n, 24, 24))
 F = np.zeros((n, 4, 24))
 
 q_diag = np.array([
-    1,    # x: 100
-    1,     # w: 10
-    5000,   # theta: 5000 (身体俯仰是最重要的！)
-    1,    # theta_l: 500
-    1,    # theta_r: 500
+    100,    # x: 100
+    10,     # w: 10
+    40000,   # theta: 5000 (身体俯仰是最重要的！)
+    20000,    # theta_l: 500
+    20000,    # theta_r: 500
     1,     # x_dot
     1,      # w_dot
     1,    # theta_dot
@@ -56,11 +56,11 @@ Q = S
 #              [0,0,0,0,0,0,0,1,0,0],
 #              [0,0,0,0,0,0,0,0,1,0],
 #              [0,0,0,0,0,0,0,0,0,1]])
-R = np.array(
+R = 1*np.array(
             [[1,0,0,0],
              [0,1,0,0],
-             [0,0,1,0],
-             [0,0,0,1]])
+             [0,0,10,0],
+             [0,0,0,10]])
 
 J = np.zeros(n)
 J_best = np.zeros(n)
@@ -153,14 +153,14 @@ from scipy.linalg import solve_discrete_are
 
 
 
-P_steady =Sa
-# P_steady =S
+# P_steady =Sa
+P_steady =S
 #F_steady
 for i in range(0,n):
-      F_convergence= np.linalg.inv(Ba.T @ P_steady @ Ba + Ra) @ (Ba.T @ P_steady @ Aa)
-      P_steady = (Aa - Ba @ F_convergence).T @ P_steady @ (Aa - Ba @ F_convergence) + F_convergence.T @ Ra @ F_convergence + Qa
-      # F_convergence= np.linalg.inv(Bd.T @ P_steady @ Bd + R) @ (Bd.T @ P_steady @ Ad)
-      # P_steady = (Ad - Bd @ F_convergence).T @ P_steady @ (Ad - Bd @ F_convergence) + F_convergence.T @ R @ F_convergence + Q
+      # F_convergence= np.linalg.inv(Ba.T @ P_steady @ Ba + Ra) @ (Ba.T @ P_steady @ Aa)
+      # P_steady = (Aa - Ba @ F_convergence).T @ P_steady @ (Aa - Ba @ F_convergence) + F_convergence.T @ Ra @ F_convergence + Qa
+      F_convergence= np.linalg.inv(Bd.T @ P_steady @ Bd + R) @ (Bd.T @ P_steady @ Ad)
+      P_steady = (Ad - Bd @ F_convergence).T @ P_steady @ (Ad - Bd @ F_convergence) + F_convergence.T @ R @ F_convergence + Q
 
 
 print(F_convergence)
