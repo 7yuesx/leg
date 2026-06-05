@@ -8,7 +8,7 @@
                 size="1 1 0.5 0.5" 
                 nrow="2" 
                 ncol="2" 
-                elevation="1.0 0.0 1.0 0.0"/>
+                elevation="1.0 1.0 1.0 1.0"/>
     </asset>
 
     <worldbody>
@@ -16,7 +16,7 @@
         
         <light diffuse=".5 .5 .5" pos="0 0 3" dir="0 0 -1"/>
         <geom type="plane" size="200 200 0.1" rgba=".9 .9 .9 1" friction="1.0 0.001 0.0001" condim="6"/>
-        <body name="bigbox" pos="-1 0 0">
+        <body name="bigbox" pos="-5 0 0.35">
             <geom name="terrain_geom" type="hfield" hfield="my_terrain" pos="0 0 0" rgba="0.7 0.8 0.9 1" friction="0.8 0.005 0.0001"/>
         </body>                           
         <body name="gimbal" pos="0 0 0.331">

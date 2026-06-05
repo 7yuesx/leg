@@ -19,14 +19,14 @@ cmd_v = 0.0
 cmd_omega_w = 0.0
 cmd_hight = 0
 jump = 0
-
+flag = 0
 def on_press(key):
-    global cmd_v, cmd_omega_w, cmd_hight,jump
+    global cmd_v, cmd_omega_w, cmd_hight,jump,flag
     try:
-        if key == keyboard.Key.up: cmd_v = 3.0
-        if key == keyboard.Key.down: cmd_v = -3.0
-        if key == keyboard.Key.left: cmd_omega_w = 3.0
-        if key == keyboard.Key.right: cmd_omega_w = -3.0
+        if key == keyboard.Key.up: cmd_v = 2.0
+        if key == keyboard.Key.down: cmd_v = -2.0
+        if key == keyboard.Key.left: cmd_omega_w = 10.0
+        if key == keyboard.Key.right: cmd_omega_w = -10.0
         if key == keyboard.Key.shift_l:cmd_hight = 0.001
         if key == keyboard.Key.shift_r:cmd_hight = -0.001   
         if key == keyboard.Key.space:jump = 1
@@ -34,13 +34,13 @@ def on_press(key):
         pass
 
 def on_release(key):
-    global cmd_v, cmd_omega_w, cmd_hight,jump
+    global cmd_v, cmd_omega_w, cmd_hight,jump,flag
     # 松开按键时归零
     cmd_v = 0.0
     cmd_omega_w = 0.0
     cmd_hight = 0
     jump = 0
-
+    flag = 1
 # 开启后台监听
 listener = keyboard.Listener(on_press=on_press, on_release=on_release)
 listener.start()
@@ -64,10 +64,10 @@ road = Kalman()
 left=Leg("left", dt)
 right=Leg("right", dt)
 
-left_length_pos = PID_control(kp=15, ki=0.0, kd=0, targ_value=0)
-right_length_pos = PID_control(kp=15, ki=0.0, kd=0, targ_value=0)
-left_length_vel = PID_control(kp=150, ki=0, kd=0, targ_value=0)
-right_length_vel = PID_control(kp=150, ki=0, kd=0, targ_value=0)
+left_length_pos = PID_control(kp=2000, ki=0.0, kd=0, targ_value=0)
+right_length_pos = PID_control(kp=2000, ki=0.0, kd=0, targ_value=0)
+left_length_vel = PID_control(kp=100, ki=0, kd=0, targ_value=0)
+right_length_vel = PID_control(kp=100, ki=0, kd=0, targ_value=0)
 
 x_target=0
 w_target=0
@@ -76,6 +76,9 @@ w_dot_target=0
 
 leg_length=0.2
 j=0
+
+jumped_l=0
+jumped_r=0
 
 U_last = U = np.zeros((4,1))
 U_out = np.zeros((6,1))
@@ -167,34 +170,56 @@ with mj.viewer.launch_passive(model, data) as viewer:
          
         # left_length_pos.position_pid(leg_length,left.length)
         # right_length_pos.position_pid(leg_length,right.length)
-        left_length_vel.position_pid(left_length_pos.position_pid(leg_length,left.length),left.length_dot.Diff(left.length))
-        right_length_vel.position_pid(right_length_pos.position_pid(leg_length,right.length),right.length_dot.Diff(right.length))
+        left_length_pos.position_pid(leg_length,left.length)
+        left_length_vel.position_pid(0,left.length_dot.Diff(left.length))
+        right_length_pos.position_pid(leg_length,right.length)
+        right_length_vel.position_pid(0,right.length_dot.Diff(right.length))
         
 
-        max=500
+        max1=1000
+        max2=1000
 
-        if left_length_pos.output>max:
-            left_length_pos.output=max
-        if left_length_pos.output<-max:
-            left_length_pos.output=-max
-        if right_length_pos.output>max:
-            right_length_pos.output=max
-        if right_length_pos.output<-max:
-            right_length_pos.output=-max
+        jumped_r=0
+        jumped_l=0
+        if right.length<0.34 and jump and flag:
+            jumped_r=5000
+            max1=0
+            max2=0
+        elif left.length>=0.34 and jump:
+            jumped_r=0
+            flag=0
+            #leg_length=0.2
+        if left.length<0.34 and jump and flag:
+            jumped_l=5000
+            max1=0
+            max2=0
+        elif left.length>=0.34 and jump:
+            jumped_l=0
+            flag=0
+            #leg_length=0.2
 
-        if left_length_vel.output>max:
-            left_length_vel.output=max
-        if left_length_vel.output<-max:
-            left_length_vel.output=-max
-        if right_length_vel.output>max:
-            right_length_vel.output=max
-        if right_length_vel.output<-max:
-            right_length_vel.output=-max
+        if left_length_pos.output>max1:
+            left_length_pos.output=max1
+        if left_length_pos.output<-max1:
+            left_length_pos.output=-max1
+        if right_length_pos.output>max1:
+            right_length_pos.output=max1
+        if right_length_pos.output<-max1:
+            right_length_pos.output=-max1
 
+        if left_length_vel.output>max2:
+            left_length_vel.output=max2
+        if left_length_vel.output<-max2:
+            left_length_vel.output=-max2
+        if right_length_vel.output>max2 :
+            right_length_vel.output=max2
+        if right_length_vel.output<-max2:
+            right_length_vel.output=-max2
         
+
+        F_l=left_length_vel.output+left_length_pos.output+99.5715*cos(robot_state.x[3,0])+jumped_l
         
-        F_l=left_length_vel.output+left_length_pos.output+100*cos(robot_state.x[3,0])
-        F_r=right_length_vel.output+right_length_pos.output+100*cos(robot_state.x[4,0])
+        F_r=right_length_vel.output+right_length_pos.output+99.5715*cos(robot_state.x[4,0])+jumped_r
 
 
         # left.vmc(0, U[0,0], motor, length)
@@ -231,7 +256,7 @@ with mj.viewer.launch_passive(model, data) as viewer:
 
 
 
-        if(Fn_l<30):
+        if(Fn_l<15):
             F_c[0,0]=0
             F_c[0,1]=0
             F_c[0,2]=0
@@ -240,7 +265,7 @@ with mj.viewer.launch_passive(model, data) as viewer:
             F_c[0,5]=0
             F_c[0,6]=0
             F_c[0,7]=0
-            F_c[0,8]=0
+            F_c[0,9]=0
             
             F_c[2,0]=0
             F_c[2,1]=0
@@ -254,7 +279,7 @@ with mj.viewer.launch_passive(model, data) as viewer:
             F_c[2,8]=0
             F_c[2,9]=0
             # U[2,0]=0
-        if(Fn_r<30): 
+        if(Fn_r<15): 
             F_c[1,0]=0
             F_c[1,1]=0
             F_c[1,2]=0
@@ -283,12 +308,18 @@ with mj.viewer.launch_passive(model, data) as viewer:
 
         U=-F_c @ (robot_state.update_state(left, right, length, motor,imu, road)-robot_state.update_target(x_target, w_target, x_dot_target, w_dot_target))
        
-        left.vmc(F_l+jump*1000, U[0,0], motor, length)
-        right.vmc(F_r+jump*1000, U[1,0], motor, length)
+        left.vmc(F_l, U[0,0], motor, length)
+        right.vmc(F_r, U[1,0], motor, length)
 
         U_out = np.block([[left.t_front],[right.t_front],[left.t_back],[right.t_back],[U[2,0]],[U[3,0]]])
 
-        
+        if abs(imu["euler"][0])>1.22 or abs(imu["euler"][1])>1.22:
+            U_out[0,0]=0
+            U_out[1,0]=0
+            U_out[2,0]=0
+            U_out[3,0]=0
+            U_out[4,0]=0
+            U_out[5,0]=0
 
         send_list = [
             robot_state.x[0,0],
@@ -326,7 +357,12 @@ with mj.viewer.launch_passive(model, data) as viewer:
             Fn_r,  
             F_l,
             F_r,
-            road.road
+            road.road,
+            z_wheel_l,
+            z_wheel_r,
+            flag,
+            jump,
+
         ]
         
 
@@ -336,22 +372,22 @@ with mj.viewer.launch_passive(model, data) as viewer:
         binary_data = struct.pack('<' + 'f' * len(send_list), *send_list)
         sock.sendto(binary_data + vofa_tail, (UDP_IP, UDP_PORT))
 
-        if U_out[0,0]>15:
-            U_out[0,0]=15
-        if U_out[0,0]<-15:
-            U_out[0,0]=-15
-        if U_out[1,0]>15:
-            U_out[1,0]=15
-        if U_out[1,0]<-15:  
-            U_out[1,0]=-15
-        if U_out[2,0]>15:
-            U_out[2,0]=15
-        if U_out[2,0]<-15:
-            U_out[2,0]=-15
-        if U_out[3,0]>15:
-            U_out[3,0]=15
-        if U_out[3,0]<-15:
-            U_out[3,0]=-15
+        if U_out[0,0]>30:
+            U_out[0,0]=30
+        if U_out[0,0]<-30:
+            U_out[0,0]=-30
+        if U_out[1,0]>30:
+            U_out[1,0]=30
+        if U_out[1,0]<-30:  
+            U_out[1,0]=-30
+        if U_out[2,0]>30:
+            U_out[2,0]=30
+        if U_out[2,0]<-30:
+            U_out[2,0]=-30
+        if U_out[3,0]>30:
+            U_out[3,0]=30
+        if U_out[3,0]<-30:
+            U_out[3,0]=-30
         if U_out[4,0]>5:
             U_out[4,0]=5
         if U_out[4,0]<-5:
@@ -361,6 +397,7 @@ with mj.viewer.launch_passive(model, data) as viewer:
         if U_out[5,0]<-5:
             U_out[5,0]=-5
    
+
         for i in range(6):
             data.ctrl[i] =  U_out[i,0]   
         # 3. 物理引擎向前推进一步

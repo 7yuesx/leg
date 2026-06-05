@@ -17,12 +17,12 @@ P = np.zeros((n, 24, 24))
 F = np.zeros((n, 4, 24))
 
 q_diag = np.array([
-    100,    # x: 100
-    10,     # w: 10
-    40000,   # theta: 5000 (身体俯仰是最重要的！)
-    20000,    # theta_l: 500
-    20000,    # theta_r: 500
-    1,     # x_dot
+    50,    # x: 100
+    20,     # w: 10
+    5000,   # theta: 5000 (身体俯仰是最重要的！)
+    3000,    # theta_l: 500
+    3000,    # theta_r: 500
+    5,     # x_dot
     1,      # w_dot
     1,    # theta_dot
     1,     # theta_dot_l
@@ -59,8 +59,8 @@ Q = S
 R = 1*np.array(
             [[1,0,0,0],
              [0,1,0,0],
-             [0,0,10,0],
-             [0,0,0,10]])
+             [0,0,1,0],
+             [0,0,0,1]])
 
 J = np.zeros(n)
 J_best = np.zeros(n)

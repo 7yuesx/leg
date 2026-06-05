@@ -3,30 +3,36 @@ import numpy as np
 class Kalman:
     def __init__(self):
         self.x=np.array([[0.0],[0.0],[0.0]])
+
         self.z=np.array([[0.0],[0.0],[0.0]])
+
         self.u=np.array([[0.0]])
+
         self.P=np.array([[1.0,0.0,0.0],
                          [0.0,1.0,0.0],
                          [0.0,0.0,1.0]])
+
         self.H=np.array([[1.0,0.0,0.0],
                          [0.0,1.0,0.0],
                          [0.0,0.0,1.0]])
+
         self.I=np.eye(3)
 
         self.K=np.zeros((3,3))
 
-        self.Q=np.array([[0.0000001,0.0000000002,0.0000000000002],
-                         [0.0000000002,0.0000001,0.0000000002],
-                         [0.0000000000002,0.000000002,0.0000001]])
-        self.R=np.array([[100000000.0,200000.0,200.0],
-                         [200000.0,100000000.0,200000.0],
-                         [200.0,200000.0,100000000.0]])
+        self.Q=np.array([[10,0.02,0.00002],
+                         [0.02,0.1,0.02],
+                         [0.00002,0.02,10]])
+        self.R=np.array([[10000.0,20.0,200.0],
+                         [20.0,10000.0,20.0],
+                         [200.0,20.0,10000.0]])
         self.A=np.array([[1.0,0.002,0.000002],
                          [0.0,1.0,0.002],
                          [0.0,0.0,1.0]])
         self.B=np.array([[0.000002],[0.002],[0.0]])
 
         self.road=0
+
     def filter(self,z_body,motor,length,dt):
         self.road+=(length["left_wheel"]*motor["left_wheel_vel"] + length["right_wheel"]*motor["right_wheel_vel"])*0.5*dt
         self.z[0,0]=self.road#(length["left_wheel"]*motor["left_wheel_pos"] + length["right_wheel"]*motor["right_wheel_pos"])*0.5
@@ -42,5 +48,3 @@ class Kalman:
         self.x=self.x + self.K @ (self.z - self.H @ self.x)
         self.P=(self.I-self.K@self.H) @ self.P
 
-
-  
